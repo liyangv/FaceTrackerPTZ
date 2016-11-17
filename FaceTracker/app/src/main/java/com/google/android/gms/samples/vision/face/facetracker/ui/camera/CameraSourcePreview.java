@@ -17,6 +17,10 @@ package com.google.android.gms.samples.vision.face.facetracker.ui.camera;
 
 import android.content.Context;
 import android.content.res.Configuration;
+import android.os.Build;
+import android.transition.AutoTransition;
+import android.transition.Transition;
+import android.transition.TransitionManager;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.SurfaceHolder;
@@ -75,6 +79,23 @@ public class CameraSourcePreview extends ViewGroup {
     private int nFrameWidth;// = 960;  //1920
     private int nFrameHeight;// = 1280;//1080
 
+
+
+
+    public long mStartMovingAnimationTime;
+    public boolean mDuringAnimation = false;
+
+
+    public int mAnimationStep = 0;
+    public int mCurrentlayoutX = -1;
+    public int mCurrentlayoutY = -1;
+    public int mCurrentlayoutWidth = -1;
+    public int mCurrentlayoutHeight = -1;
+    public int nTargetX = -1;
+    public int nTargetY = -1;
+    public int nTargetWidth = -1;
+    public int nTargetHeight = -1;
+
     Vector mVector;// = new Vector();
     public boolean mbFrontalCamera = true;
     public boolean mbMoving = false;
@@ -112,7 +133,7 @@ public class CameraSourcePreview extends ViewGroup {
             mROIY = 0;
             mROIWidth = 0;
             mROIHeight = 0;
-            invalidate();
+           // invalidate();
             requestLayout();
             handlerTimer.postDelayed(this, 2000);
         }
@@ -121,13 +142,21 @@ public class CameraSourcePreview extends ViewGroup {
 
     public Handler myHandler = new Handler() {
         public void handleMessage(Message msg) {
-            switch (msg.what) {
-                case 1:
-                    invalidate();
-                    requestLayout();
-                    handlerTimer.postDelayed(runnable, 2000);
-                    break;
+
+            Long currentTime = Calendar.getInstance().getTimeInMillis();
+            if(currentTime - mStartMovingAnimationTime > 1000){
+                switch (msg.what) {
+                    case 1:
+                        //invalidate();
+                        mStartMovingAnimationTime = Calendar.getInstance().getTimeInMillis();
+                        requestLayout();
+                        handlerTimer.postDelayed(runnable, 2000);
+                        break;
+                }
+            }else{
+                Log.d(TAG, "waiting for animation finished");
             }
+
 
             super.handleMessage(msg);
         }
@@ -229,9 +258,10 @@ public class CameraSourcePreview extends ViewGroup {
     }
 
     public void updateFace(Face face) {
+
         handlerTimer.removeCallbacks(runnable);
-        ReadWriteLock rwl = new ReentrantReadWriteLock();
-        rwl.writeLock().lock();
+     //   ReadWriteLock rwl = new ReentrantReadWriteLock();
+    //    rwl.writeLock().lock();
         int size = mVector.size();
         int bExit = -1;
         for (int i=0; i<size; i++) {
@@ -315,7 +345,6 @@ public class CameraSourcePreview extends ViewGroup {
                     mFrameROIWidth = nNewWidth;
                     mFrameROIHeight = nNewHeight;
 
-
                     mLastFrameROIX = mFrameROIXSmooth;
                     mLastFrameROIY = mFrameROIYSmooth;
                     mLastFrameROIWidth = mFrameROIWidthSmooth;
@@ -326,11 +355,11 @@ public class CameraSourcePreview extends ViewGroup {
 
 
         }else{
-            double dStep = 2.0;
-            mFrameROIXSmooth =  mFrameROIXSmooth + (double)(mFrameROIX - mLastFrameROIX)/1.0;
-            mFrameROIYSmooth = mFrameROIYSmooth + (double)(mFrameROIY - mLastFrameROIY)/1.0;
-            mFrameROIWidthSmooth = mFrameROIWidthSmooth + (double)(mFrameROIWidth - mLastFrameROIWidth)/1.0;
-            mFrameROIHeightSmooth = mFrameROIHeightSmooth + (double)(mFrameROIHeight - mLastFrameROIHeight)/1.0;
+
+            mFrameROIXSmooth =  mFrameROIX;//mFrameROIXSmooth + (double)(mFrameROIX - mLastFrameROIX)/1.0;
+            mFrameROIYSmooth = mFrameROIY;//mFrameROIYSmooth + (double)(mFrameROIY - mLastFrameROIY)/1.0;
+            mFrameROIWidthSmooth = mFrameROIWidth;//mFrameROIWidthSmooth + (double)(mFrameROIWidth - mLastFrameROIWidth)/1.0;
+            mFrameROIHeightSmooth = mFrameROIHeight;//mFrameROIHeightSmooth + (double)(mFrameROIHeight - mLastFrameROIHeight)/1.0;
         }
         int nFaceWidth = (int)(mFrameROIWidthSmooth) + 200;
         int nFaceHeight = (int)(mFrameROIHeightSmooth) + 200;
@@ -348,7 +377,13 @@ public class CameraSourcePreview extends ViewGroup {
         mROIHeight = (int)(nFrameHeight/dScale);
         mROIX = (int)(nWindowWidth/2.0) - nFaceX;
         mROIY = (int)(nWindowHeight/2.0) - nFaceY;
-        rwl.writeLock().unlock();
+
+        mROIX = Math.min(mROIX,0);
+        mROIY = Math.min(mROIY,0);
+        mROIX = Math.max(mROIX, nWindowWidth - mROIWidth);
+        mROIY = Math.max(mROIY,nWindowHeight - mROIHeight);
+        //     rwl.writeLock().unlock();
+
     }
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
@@ -386,14 +421,56 @@ public class CameraSourcePreview extends ViewGroup {
             childWidth = (int)(((float) layoutHeight / (float) height) * width);
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            Transition mTransition = new AutoTransition();
+            mTransition.setDuration(2000);
+            TransitionManager.beginDelayedTransition(this,mTransition);
+        }
+        Log.d(TAG, "layout");
         if(mROIWidth == 0 && mROIHeight == 0){
             for (int i = 0; i < getChildCount(); ++i) {
                 getChildAt(i).layout(0, 0, 0 + childWidth, 0 + childHeight);
             }
+
+            mCurrentlayoutX = 0;
+            mCurrentlayoutY = 0;
+            mCurrentlayoutWidth = childWidth;
+            mCurrentlayoutHeight = childHeight;
+
         }else{
+            if(mAnimationStep == 0){
+               // mCurrentlayoutX = mROIX;
+               // mCurrentlayoutY = mROIY;
+
+                mCurrentlayoutX = nWindowWidth/2 - (nWindowWidth/2 - mROIX)*mCurrentlayoutWidth/mROIWidth;
+
+                mCurrentlayoutY = nWindowHeight/2 - (nWindowHeight/2 - mROIY)*mCurrentlayoutHeight/mROIHeight;
+                //mCurrentlayoutX = mROIX + mROIWidth/2 - mCurrentlayoutWidth/2;
+                //mCurrentlayoutY = mROIY + mROIHeight/2 - mCurrentlayoutHeight/2;
+                mCurrentlayoutWidth = mCurrentlayoutWidth;
+                mCurrentlayoutHeight = mCurrentlayoutHeight;
+                nTargetX = mROIX;
+                nTargetY = mROIY;
+                nTargetWidth = mROIWidth;
+                nTargetHeight = mROIHeight;
+                mAnimationStep = 1;
+            }else{
+                mCurrentlayoutX = nTargetX;
+                mCurrentlayoutY = nTargetY;
+                mCurrentlayoutWidth = nTargetWidth;
+                mCurrentlayoutHeight = nTargetHeight;
+                mAnimationStep = 0;
+            }
             for (int i = 0; i < getChildCount(); ++i) {
+                getChildAt(i).layout(mCurrentlayoutX, mCurrentlayoutY, mCurrentlayoutX + mCurrentlayoutWidth, mCurrentlayoutY + mCurrentlayoutHeight);
+            }
+
+          /*  for (int i = 0; i < getChildCount(); ++i) {
                 getChildAt(i).layout(mROIX, mROIY, mROIX + mROIWidth, mROIY + mROIHeight);
             }
+*/
+
+
         }
 
         try {
